@@ -1,0 +1,22 @@
+{
+  "name": "nodebb-plugin-email-parse",
+  "version": "1.0.0",
+  "description": "A plugin for making sure post have been parsed correctly before sending email",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "nodebb",
+    "plugin",
+    "email",
+    "parser"
+  ],
+  "author": "Oliver Sedoc <osedoc@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "async": "^3.1.0",
+    "markdown-it": "^10.0.0",
+    "url": "^0.11.0"
+  }
+}
