@@ -2,11 +2,11 @@
     "id": "nodebb-plugin-email-parse",
     "name": "Post Parser for emails",
     "description": "Post Parser for emails",
-    "url": "https://github.com/xxx/xxx",
+    "url": "https://github.com/olisedoc/nodebb-plugin-email-parse",
     "library": "./index.js",
     "defaultLang": "en_US",
     "hooks": [
         { "hook": "static:app.load", "method": "onLoad" },
-        { "hook": "filter:email.modify", "method": "parsePost", "priority": 10 }
+        { "hook": "filter:email.params", "method": "parsePost", "priority": 10 }
     ]
 }

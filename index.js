@@ -10,8 +10,10 @@ var	parser;
 
 var EmailParse = {
 	config: {},
-	onLoad: function () {
-		EmailParse.init();
+	onLoad: function (params, callback) {
+        EmailParse.init();
+        
+        callback();
     },
     
     init: function () {
@@ -34,17 +36,28 @@ var EmailParse = {
     parsePost: function (data, callback) {
 		async.waterfall([
 			function (next) {
-				if (data && data.postData && data.postData.content && parser) {
-					data.postData.content = parser.render(data.postData.content);
+				console.log('first function in water fall ran');
+				console.log(data);
+				next(null, data);
+			},
+			function (results, next) {
+				console.log('middle function in water fall ran');
+				if (results && results.params && results.params.notification && parser) {
+					results.params.body = parser.render(results.params.body);
+					//results.postData.content = parser.render(results.postData.content);
 				}
 				next(null, data);
 			},
-			//async.apply(EmailParse.postParse),
+			function (results, next) {
+				console.log('last function in water fall ran');
+				console.log(results)
+				next(null, results)
+			},
 		], callback);
+
     },
     
     updateParserRules: function (parser) {
-
 		// Update renderer to add some classes to all images
 		var renderImage = parser.renderer.rules.image || function (tokens, idx, options, env, self) {
 			return self.renderToken.apply(self, arguments);
@@ -109,8 +122,6 @@ var EmailParse = {
 
 			return renderTable(tokens, idx, options, env, self);
 		};
-
-		plugins.fireHook('action:markdown.updateParserRules', parser);
 	},
 
 	isUrlValid: function (src) {
