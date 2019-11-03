@@ -1,10 +1,12 @@
 'use strict'
 
-var MarkdownIt = require('markdown-it');
+var md = require('markdown-it');
+var emoji = require('markdown-it-emoji');
 var url = require('url');
 var async = require('async');
 
 var nconf = require.main.require('nconf');
+var winston = module.parent.require('winston');
 
 var	parser;
 
@@ -12,7 +14,6 @@ var EmailParse = {
 	config: {},
 	onLoad: function (params, callback) {
         EmailParse.init();
-        
         callback();
 	},
 	
@@ -24,6 +25,10 @@ var EmailParse = {
 	imgRegex : {
 		regex: /src="([^"]+)"/g,
 		length: 5,
+	},
+
+	emojiRegex : {
+		regex: /(:[\w_-]+: ?)/g
 	},
     
     init: function () {
@@ -38,137 +43,38 @@ var EmailParse = {
             externalBlank: true,
 		};
 
-        parser = new MarkdownIt(defaults);
-        EmailParse.updateParserRules(parser);
+		parser = new md(defaults);
+		parser.use(emoji)
     },
     
     parsePost: function (data, callback) {
 		async.waterfall([
 			function (next) {
 				if (data && data.params && data.params.notification && parser) {
-					/** TODO : 
-					only parse if its a mention noitification
-					*/
 					data.params.body = parser.render(data.params.body);
-				}
+				};
 				next(null, data);
 			},
 			function (results, next) {
-				results.params.body = EmailParse.relativeToAbsolute(results.params.body, EmailParse.urlRegex);
+				if (results && results.params && results.params.notification && parser) {
+					results.params.body = EmailParse.removeEmojiMarkup(results.params.body, EmailParse.emojiRegex);
+				};
 				next(null, results)
 			},
 			function (results, next) {
-				results.params.body = EmailParse.relativeToAbsolute(results.params.body, EmailParse.imgRegex);
+				if (results && results.params && results.params.notification && parser) {
+					results.params.body = EmailParse.relativeToAbsolute(results.params.body, EmailParse.urlRegex);
+				};
+				next(null, results)
+			},
+			function (results, next) {
+				if (results && results.params && results.params.notification && parser) {
+					results.params.body = EmailParse.relativeToAbsolute(results.params.body, EmailParse.imgRegex);
+				};
 				next(null, results)
 			}
 		], callback);
 
-    },
-    
-    updateParserRules: function (parser) {
-		// Update renderer to add some classes to all images
-		var renderImage = parser.renderer.rules.image || function (tokens, idx, options, env, self) {
-			return self.renderToken.apply(self, arguments);
-		};
-		var renderLink = parser.renderer.rules.link_open || function (tokens, idx, options, env, self) {
-			return self.renderToken.apply(self, arguments);
-		};
-		var renderTable = parser.renderer.rules.table_open || function (tokens, idx, options, env, self) {
-			return self.renderToken.apply(self, arguments);
-		};
-
-		parser.renderer.rules.image = function (tokens, idx, options, env, self) {
-			var classIdx = tokens[idx].attrIndex('class');
-			var srcIdx = tokens[idx].attrIndex('src');
-
-			// Validate the url
-			if (!EmailParse.isUrlValid(tokens[idx].attrs[srcIdx][1])) { return ''; }
-
-			if (classIdx < 0) {
-				tokens[idx].attrPush(['class', 'img-responsive img-markdown']);
-			} else {
-				tokens[idx].attrs[classIdx][1] += ' img-responsive img-markdown';
-			}
-
-			return renderImage(tokens, idx, options, env, self);
-		};
-
-		parser.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-			// Add target="_blank" to all links
-			var targetIdx = tokens[idx].attrIndex('target');
-			var relIdx = tokens[idx].attrIndex('rel');
-			var hrefIdx = tokens[idx].attrIndex('href');
-
-			if (EmailParse.isExternalLink(tokens[idx].attrs[hrefIdx][1])) {
-				if (EmailParse.config.externalBlank) {
-					if (targetIdx < 0) {
-						tokens[idx].attrPush(['target', '_blank']);
-					} else {
-						tokens[idx].attrs[targetIdx][1] = '_blank';
-					}
-
-					if (relIdx < 0) {
-						tokens[idx].attrPush(['rel', 'noopener noreferrer']);
-						relIdx = tokens[idx].attrIndex('rel');
-					} else {
-						tokens[idx].attrs[relIdx][1] = 'noopener noreferrer';
-					}
-				}
-			}
-
-			return renderLink(tokens, idx, options, env, self);
-		};
-
-		parser.renderer.rules.table_open = function (tokens, idx, options, env, self) {
-			var classIdx = tokens[idx].attrIndex('class');
-
-			if (classIdx < 0) {
-				tokens[idx].attrPush(['class', 'table table-bordered table-striped']);
-			} else {
-				tokens[idx].attrs[classIdx][1] += ' table table-bordered table-striped';
-			}
-
-			return renderTable(tokens, idx, options, env, self);
-		};
-	},
-
-	isUrlValid: function (src) {
-		/**
-		 * Images linking to a relative path are only allowed from the root prefixes
-		 * defined in allowedRoots. We allow both with and without relative_path
-		 * even though upload_url should handle it, because sometimes installs
-		 * migrate to (non-)subfolder and switch mid-way, but the uploads urls don't
-		 * get updated.
-		 */
-		const allowedRoots = [nconf.get('upload_url'), '/uploads', '/assets'];
-		const allowed = pathname => allowedRoots.some(root => pathname.toString().startsWith(root) || pathname.toString().startsWith(nconf.get('relative_path') + root));
-
-		try {
-			var urlObj = url.parse(src, false, true);
-			return !(urlObj.host === null && !allowed(urlObj.pathname));
-		} catch (e) {
-			return false;
-		}
-	},
-
-	isExternalLink: function (urlString) {
-		var urlObj;
-		var baseUrlObj;
-		try {
-			urlObj = url.parse(urlString);
-			baseUrlObj = url.parse(nconf.get('url'));
-		} catch (err) {
-			return false;
-		}
-
-		if (
-			urlObj.host === null	// Relative paths are always internal links...
-			|| (urlObj.host === baseUrlObj.host && urlObj.protocol === baseUrlObj.protocol	// Otherwise need to check that protocol and host match
-			&& (nconf.get('relative_path').length > 0 ? urlObj.pathname.indexOf(nconf.get('relative_path')) === 0 : true))	// Subfolder installs need this additional check
-		) {
-			return false;
-		}
-		return true;
 	},
 
 	relativeToAbsolute: function (content, regex) {
@@ -198,6 +104,16 @@ var EmailParse = {
 			current = regex.regex.exec(content);
 		}
 
+		return content;
+	},
+
+	removeEmojiMarkup: function (content, regex) {
+		// removes emojis markup for looks
+		var current = regex.regex.exec(content);
+		if (content && current) {
+			content = content.replace(regex.regex, '')
+		}
+	
 		return content;
 	}
 };
