@@ -14,11 +14,20 @@ var EmailParse = {
         EmailParse.init();
         
         callback();
-    },
+	},
+	
+	urlRegex : {
+		regex: /href="([^"]+)"/g,
+		length: 6,
+	},
+
+	imgRegex : {
+		regex: /src="([^"]+)"/g,
+		length: 5,
+	},
     
     init: function () {
 		// Load saved config
-		var	_self = this;
 		var defaults = {
 			html: false,
 			xhtmlOut: true,
@@ -29,30 +38,29 @@ var EmailParse = {
             externalBlank: true,
 		};
 
-        parser = new MarkdownIt(_self.config);
+        parser = new MarkdownIt(defaults);
         EmailParse.updateParserRules(parser);
     },
     
     parsePost: function (data, callback) {
 		async.waterfall([
 			function (next) {
-				console.log('first function in water fall ran');
-				console.log(data);
-				next(null, data);
-			},
-			function (results, next) {
-				console.log('middle function in water fall ran');
-				if (results && results.params && results.params.notification && parser) {
-					results.params.body = parser.render(results.params.body);
-					//results.postData.content = parser.render(results.postData.content);
+				if (data && data.params && data.params.notification && parser) {
+					/** TODO : 
+					only parse if its a mention noitification
+					*/
+					data.params.body = parser.render(data.params.body);
 				}
 				next(null, data);
 			},
 			function (results, next) {
-				console.log('last function in water fall ran');
-				console.log(results)
+				results.params.body = EmailParse.relativeToAbsolute(results.params.body, EmailParse.urlRegex);
 				next(null, results)
 			},
+			function (results, next) {
+				results.params.body = EmailParse.relativeToAbsolute(results.params.body, EmailParse.imgRegex);
+				next(null, results)
+			}
 		], callback);
 
     },
@@ -132,7 +140,7 @@ var EmailParse = {
 		 * migrate to (non-)subfolder and switch mid-way, but the uploads urls don't
 		 * get updated.
 		 */
-		const allowedRoots = [nconf.get('upload_url'), '/uploads'];
+		const allowedRoots = [nconf.get('upload_url'), '/uploads', '/assets'];
 		const allowed = pathname => allowedRoots.some(root => pathname.toString().startsWith(root) || pathname.toString().startsWith(nconf.get('relative_path') + root));
 
 		try {
@@ -162,6 +170,36 @@ var EmailParse = {
 		}
 		return true;
 	},
+
+	relativeToAbsolute: function (content, regex) {
+		// Turns relative links in post body to absolute urls
+		var parsed;
+		var current = regex.regex.exec(content);
+		var absolute;
+		while (current !== null) {
+			if (current[1]) {
+				try {
+					parsed = url.parse(current[1]);
+					if (!parsed.protocol) {
+						if (current[1].startsWith('/')) {
+							// Internal link
+							absolute = nconf.get('base_url') + current[1];
+						} else {
+							// External link
+							absolute = '//' + current[1];
+						}
+
+						content = content.slice(0, current.index + regex.length) + absolute + content.slice(current.index + regex.length + current[1].length);
+					}
+				} catch (err) {
+					winston.verbose(err.messsage);
+				}
+			}
+			current = regex.regex.exec(content);
+		}
+
+		return content;
+	}
 };
 
 module.exports = EmailParse;
