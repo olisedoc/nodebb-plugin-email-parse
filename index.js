@@ -4,9 +4,12 @@ var md = require('markdown-it');
 var emoji = require('markdown-it-emoji');
 var url = require('url');
 var async = require('async');
+var htmlToText = require('html-to-text');
+var _ = require('lodash');
 
 var nconf = require.main.require('nconf');
 var winston = module.parent.require('winston');
+var translator = require.main.require('./public/src/modules/translator');
 
 var	parser;
 
@@ -44,7 +47,7 @@ var EmailParse = {
 		};
 
 		parser = new md(defaults);
-		parser.use(emoji)
+		parser.use(emoji);
     },
     
     parsePost: function (data, callback) {
@@ -74,7 +77,35 @@ var EmailParse = {
 				next(null, results)
 			}
 		], callback);
+	},
 
+	modifySubject: function (data, callback) {
+		async.waterfall([
+			function (next) {
+				if (data && data._raw.notification && data._raw.notification.bodyShort) {
+					translator.translate(data._raw.notification.bodyShort, function (translated) {
+						next(null, translated);
+					});
+				} else {
+					next(null, false)
+				}
+			},
+			function (results, next) {
+				if (data && results) {
+					data.subject = results;
+				};
+				next(null, data);
+			},
+			function (results, next) {
+				if (results && results.subject) {
+					results.subject = _.unescape(results.subject)
+					results.subject = htmlToText.fromString(results.subject, {
+						ignoreImage: true,
+					});
+				};
+				next(null, results);
+			}
+		], callback);
 	},
 
 	relativeToAbsolute: function (content, regex) {

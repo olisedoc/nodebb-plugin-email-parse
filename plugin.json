@@ -7,6 +7,7 @@
     "defaultLang": "en_US",
     "hooks": [
         { "hook": "static:app.load", "method": "onLoad" },
-        { "hook": "filter:email.params", "method": "parsePost", "priority": 10 }
+        { "hook": "filter:email.params", "method": "parsePost", "priority": 10 },
+        { "hook": "filter:email.modify", "method": "modifySubject", "priority": 10 }
     ]
 }
